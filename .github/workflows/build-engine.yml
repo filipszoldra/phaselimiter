@@ -72,12 +72,11 @@ jobs:
             boost_serialization.dll \
             boost_math_tr1.dll \
             boost_iostreams.dll \
-            tbb.dll \
-            tbbmalloc.dll \
             libbz2.dll \
             zlib.dll \
             zstd.dll \
             /tmp/results/bin
+          cp tbb*.dll tbbmalloc*.dll /tmp/results/bin
           )
       - run: mv /tmp/results D:/results
         shell: bash
