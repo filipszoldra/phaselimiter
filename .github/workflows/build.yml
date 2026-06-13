@@ -3,6 +3,7 @@ on:
   push:
     branches-ignore:
       - feature/win_ci
+      - 'engine-*'
 jobs:
   build:
     runs-on: ubuntu-latest
