@@ -83,6 +83,8 @@ if(WIN32)
     ipps.lib
     ippcore.lib
     ippvm.lib
+    tbb.lib
+    tbbmalloc.lib
     boost_system.lib
     boost_filesystem.lib
     boost_serialization.lib
