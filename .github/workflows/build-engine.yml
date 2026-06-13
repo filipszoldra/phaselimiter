@@ -23,14 +23,24 @@ jobs:
           python-version: 3.11
       - run: conda info
         shell: bash -el {0}
-      - run: |
-          conda install -y -c intel \
-            tbb-devel==2019.2 \
-            ipp-include==2019.2 \
-            ipp-static==2019.2
-        shell: bash -el {0}
+      - name: cache Intel oneAPI IPP installation
+        id: cache-ipp
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Intel\oneAPI\ipp
+          key: oneapi-ipp-2026.0.0.193
+      - name: install Intel oneAPI IPP
+        if: steps.cache-ipp.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          curl.exe --output %TEMP%\oneapi.exe --url https://registrationcenter-download.intel.com/akdlm/IRC_NAS/bae85ab1-cfcd-4251-8d42-a0c27949ea33/intel-oneapi-toolkit-2026.0.0.193_offline.exe --retry 5 --retry-delay 5
+          start /b /wait %TEMP%\oneapi.exe -s -x -f %TEMP%\webimage_extracted --log extract.log
+          del %TEMP%\oneapi.exe
+          %TEMP%\webimage_extracted\bootstrapper.exe -s --action install --components=intel.oneapi.win.ipp.devel --eula=accept -p=NEED_VS2017_INTEGRATION=0 -p=NEED_VS2019_INTEGRATION=0 -p=NEED_VS2022_INTEGRATION=0 --log-dir=.
+          rmdir /s /q %TEMP%\webimage_extracted
       - run: |
           conda install -y -c conda-forge \
+            tbb-devel \
             boost==1.82.0 \
             armadillo==12.6.2 \
             libpng==1.6.39
@@ -43,6 +53,7 @@ jobs:
         shell: bash
         env:
           CONDA_ROOT: C:/Miniconda/envs/test
+          IPPROOT: C:/Program Files (x86)/Intel/oneAPI/ipp/latest
         run: |
           $CMAKE_COMMAND -DCMAKE_BUILD_TYPE=Release -DSANDYBRIDGE_SUPPORT=ON -DDISABLE_TARGET_BENCH=ON -DDISABLE_TARGET_TEST=ON .
           ls -la
