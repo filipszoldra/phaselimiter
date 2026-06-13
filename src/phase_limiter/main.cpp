@@ -19,6 +19,8 @@
 #include "gflags/gflags.h"
 #include "picojson.h"
 #include "ipp.h"
+#include "tbb/global_control.h"
+#include "tbb/info.h"
 
 #include "audio_analyzer/peak.h"
 #include "bakuage/loudness_ebu_r128.h"
@@ -775,10 +777,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Ipp initialized " << lib->Name << " " << lib->Version << std::endl;
         PrintMemoryUsage();
 
-        // TBBの初期化とか (ここで初期化しておくと、毎回初期化しなくても良いらしい)
-        // https://www.xlsoft.com/jp/products/intel/perflib/tbb/41/tbb_userguide_lnx/reference/task_scheduler/task_scheduler_init_cls.htm
-        tbb::task_scheduler_init tbb_init(FLAGS_worker_count ? FLAGS_worker_count : tbb::task_scheduler_init::default_num_threads());
-        std::cerr << "TBB default_num_threads:" << tbb::task_scheduler_init::default_num_threads() << std::endl;
+        // TBBの初期化 (TBB 2021+ replaced task_scheduler_init with global_control)
+        const int tbb_threads = FLAGS_worker_count ? FLAGS_worker_count : (int)tbb::info::default_concurrency();
+        tbb::global_control tbb_ctrl(tbb::global_control::max_allowed_parallelism, tbb_threads);
+        std::cerr << "TBB default_num_threads:" << tbb_threads << std::endl;
         PrintMemoryUsage();
 
         phase_limiter::GradCoreSettings::GetInstance().set_erb_eval_func_weighting(FLAGS_erb_eval_func_weighting);

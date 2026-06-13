@@ -9,7 +9,7 @@ on:
       - 'engine-*'
 env:
   CMAKE_COMMAND: 'cmake'
-  MAKE_COMMAND: 'cmake --build . --config Release'
+  MAKE_COMMAND: 'cmake --build . --config Release --target phase_limiter'
 jobs:
   build:
     runs-on: windows-latest
