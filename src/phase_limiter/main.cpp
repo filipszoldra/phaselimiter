@@ -69,6 +69,10 @@ DEFINE_string(mastering5_optimization_algorithm, "de_prmm", "de / nm / pso / de_
 DEFINE_int32(mastering5_optimization_max_eval_count, 40000, "Mastering5 optimization max eval count.");
 DEFINE_double(mastering5_mastering_level, 0.5, "Mastering5 mastering level.");
 DEFINE_string(mastering5_mastering_reference_file, "", "Mastering reference json path.");
+DEFINE_string(mastering5_eq_band_levels, "",
+    "Comma-separated per-band multipliers (>=0, 1=neutral) applied to the optimizer's "
+    "wet-gain upper bound (mid & side) for each band. <1 restrains, >1 permits more boost/width. "
+    "Empty = disabled (no change). Count must equal band_count (9).");
 
 DEFINE_int32(worker_count, 0, "worker count (0: auto detect)");
 

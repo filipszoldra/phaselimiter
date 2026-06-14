@@ -25,6 +25,7 @@ DECLARE_string(mastering5_optimization_algorithm);
 DECLARE_int32(mastering5_optimization_max_eval_count);
 DECLARE_double(mastering5_mastering_level);
 DECLARE_string(mastering5_mastering_reference_file);
+DECLARE_string(mastering5_eq_band_levels);
 
 typedef float Float;
 using namespace bakuage;
@@ -346,7 +347,20 @@ namespace phase_limiter {
             lower_bounds *= scale;
             upper_bounds *= scale;
         }
-        
+        if (!FLAGS_mastering5_eq_band_levels.empty()) {
+            std::vector<double> levels;
+            std::string s = FLAGS_mastering5_eq_band_levels;
+            for (size_t p; (p = s.find(',')) != std::string::npos; s.erase(0, p+1))
+                levels.push_back(std::stod(s.substr(0, p)));
+            if (!s.empty()) levels.push_back(std::stod(s));
+            if ((int)levels.size() == band_count) {
+                for (int i = 0; i < band_count; i++) {
+                    upper_bounds(8 * i + 1) *= levels[i];  // mid wet gain
+                    upper_bounds(8 * i + 5) *= levels[i];  // side wet gain
+                }
+            }
+        }
+
         // エフェクトパラメータから評価関数を計算する
         std::mutex eval_mtx;
         float min_eval = 1e100;
