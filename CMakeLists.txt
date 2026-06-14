@@ -79,10 +79,12 @@ if(WIN32)
     sndfile.lib
     # ${BAKUAGE_LIB_DIR}/gflags_static.lib
     shlwapi.lib
-    ippimt.lib
-    ippsmt.lib
-    ippcoremt.lib
-    ippvmmt.lib
+    ippi.lib
+    ipps.lib
+    ippcore.lib
+    ippvm.lib
+    tbb.lib
+    tbbmalloc.lib
     boost_system.lib
     boost_filesystem.lib
     boost_serialization.lib
@@ -93,9 +95,11 @@ if(WIN32)
   )
   set(CONDA_ROOT $ENV{CONDA_ROOT})
   link_directories(${CONDA_ROOT}/Library/lib)
+  link_directories(${IPPROOT}/lib)
   include_directories(${BAKUAGE_PREBUILT_DIR}/include)
   include_directories(${CONDA_ROOT}/include)
   include_directories(${CONDA_ROOT}/Library/include)
+  include_directories(${IPPROOT}/include)
   include_directories(prebuilt/win64/optim/header_only_version)
   set(TINY_PROCESS_SOURCES
     #deps/tiny-process-library/process.hpp

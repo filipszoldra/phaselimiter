@@ -1,6 +1,8 @@
 name: build-win
 on:
   push:
+    branches-ignore:
+      - 'engine-*'
 env:
   CMAKE_COMMAND: 'cmake'
   MAKE_COMMAND: 'cmake --build . --config Release'

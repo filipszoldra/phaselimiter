@@ -1,0 +1,93 @@
+name: build-engine
+# Lean build: kompiluje wyłącznie binarki silnika i publikuje artifact `engine-bin`.
+# BEZ jobów archive/test z build-win.yml (nie klonuje bakuage_dataset1, nie regeneruje
+# sound_quality2_cache) — reużywamy istniejący cache, podmieniamy tylko phase_limiter.exe.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'engine-*'
+env:
+  CMAKE_COMMAND: 'cmake'
+  MAKE_COMMAND: 'cmake --build . --config Release --target phase_limiter'
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3.5.3
+        with:
+          submodules: recursive
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: 3.11
+      - run: conda info
+        shell: bash -el {0}
+      - name: cache Intel oneAPI IPP installation
+        id: cache-ipp
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\Intel\oneAPI\ipp
+          key: oneapi-ipp-2026.0.0.193
+      - name: install Intel oneAPI IPP
+        if: steps.cache-ipp.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          curl.exe --output %TEMP%\oneapi.exe --url https://registrationcenter-download.intel.com/akdlm/IRC_NAS/bae85ab1-cfcd-4251-8d42-a0c27949ea33/intel-oneapi-toolkit-2026.0.0.193_offline.exe --retry 5 --retry-delay 5
+          start /b /wait %TEMP%\oneapi.exe -s -x -f %TEMP%\webimage_extracted --log extract.log
+          del %TEMP%\oneapi.exe
+          %TEMP%\webimage_extracted\bootstrapper.exe -s --action install --components=intel.oneapi.win.ipp.devel --eula=accept -p=NEED_VS2017_INTEGRATION=0 -p=NEED_VS2019_INTEGRATION=0 -p=NEED_VS2022_INTEGRATION=0 --log-dir=.
+          rmdir /s /q %TEMP%\webimage_extracted
+      - run: |
+          conda install -y -c conda-forge \
+            tbb-devel \
+            boost==1.82.0 \
+            armadillo==12.6.2 \
+            libpng==1.6.39
+        shell: bash -el {0}
+      - run: conda list
+        shell: bash -el {0}
+      - run: mkdir -p /tmp/results
+        shell: bash
+      - name: build release version
+        shell: bash
+        env:
+          CONDA_ROOT: C:/Miniconda/envs/test
+          IPPROOT: C:/Program Files (x86)/Intel/oneAPI/ipp/latest
+        run: |
+          $CMAKE_COMMAND -DCMAKE_BUILD_TYPE=Release -DSANDYBRIDGE_SUPPORT=ON -DDISABLE_TARGET_BENCH=ON -DDISABLE_TARGET_TEST=ON .
+          ls -la
+          bash -c "$MAKE_COMMAND"
+      - name: collect binaries + runtime DLLs
+        shell: bash
+        env:
+          CONDA_DLL_ROOT: C:/Miniconda/envs/test/Library/bin
+        run: |
+          cp -R bin/Release /tmp/results/bin
+          cp prebuilt/win64/libsndfile-1.2.2-win64/bin/sndfile.dll /tmp/results/bin
+          (
+          cd C:/Miniconda/envs/test/Library/bin
+          cp boost_system.dll \
+            boost_filesystem.dll \
+            boost_serialization.dll \
+            boost_math_tr1.dll \
+            boost_iostreams.dll \
+            libbz2.dll \
+            zlib.dll \
+            zstd.dll \
+            liblzma.dll \
+            /tmp/results/bin
+          cp tbb*.dll tbbmalloc*.dll /tmp/results/bin
+          )
+          # IPP DLLs — find wherever oneAPI 2026 put them (path varies by version)
+          find "C:/Program Files (x86)/Intel/oneAPI/ipp" -name "ipp*.dll" \
+            -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
+          find "C:/Program Files/Intel/oneAPI/ipp" -name "ipp*.dll" \
+            -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
+          ls /tmp/results/bin/ipp*.dll || (echo "ERROR: No IPP DLLs found anywhere under oneAPI" && exit 1)
+      - run: mv /tmp/results D:/results
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-bin
+          path: D:/results

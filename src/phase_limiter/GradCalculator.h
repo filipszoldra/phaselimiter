@@ -17,7 +17,6 @@
 #include <map>
 #include <chrono>
 #include "tbb/tbb.h"
-#include "tbb/pipeline.h"
 #include "tbb/scalable_allocator.h"
 #include "tbb/cache_aligned_allocator.h"
 #include "bakuage/memory.h"
@@ -272,7 +271,7 @@ namespace phase_limiter {
                 if (task.bg == task.ed)
                     return;
                 TaskType *t = task_allocator_.allocate(1);
-                task_allocator_.construct(t, task);
+                ::new (t) TaskType(task);
                 tasks.push_back(t);
             }
             
@@ -412,7 +411,7 @@ namespace phase_limiter {
             void clear() {
                 for (size_t j = 0; j < tasks.size(); j++) {
                     tasks[j]->clearCache();
-                    task_allocator_.destroy(tasks[j]);
+                    tasks[j]->~TaskType();
                     task_allocator_.deallocate(tasks[j], 1);
                 }
                 tasks.clear();
