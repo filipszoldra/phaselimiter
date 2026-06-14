@@ -3,6 +3,7 @@ on:
   push:
     branches-ignore:
       - 'engine-*'
+      - master
 env:
   CMAKE_COMMAND: 'cmake'
   MAKE_COMMAND: 'cmake --build . --config Release'

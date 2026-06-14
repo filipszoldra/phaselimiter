@@ -4,6 +4,7 @@ on:
     branches-ignore:
       - feature/win_ci
       - 'engine-*'
+      - master
 jobs:
   build:
     runs-on: ubuntu-latest
