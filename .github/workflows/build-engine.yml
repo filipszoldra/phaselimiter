@@ -75,6 +75,7 @@ jobs:
             libbz2.dll \
             zlib.dll \
             zstd.dll \
+            liblzma.dll \
             /tmp/results/bin
           cp tbb*.dll tbbmalloc*.dll /tmp/results/bin
           )
