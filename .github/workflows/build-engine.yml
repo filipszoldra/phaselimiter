@@ -78,10 +78,12 @@ jobs:
             /tmp/results/bin
           cp tbb*.dll tbbmalloc*.dll /tmp/results/bin
           )
-          (
-          cd "C:/Program Files (x86)/Intel/oneAPI/ipp/latest/redist/intel64"
-          cp ipp*.dll /tmp/results/bin
-          )
+          # IPP DLLs — find wherever oneAPI 2026 put them (path varies by version)
+          find "C:/Program Files (x86)/Intel/oneAPI/ipp" -name "ipp*.dll" \
+            -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
+          find "C:/Program Files/Intel/oneAPI/ipp" -name "ipp*.dll" \
+            -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
+          ls /tmp/results/bin/ipp*.dll || (echo "ERROR: No IPP DLLs found anywhere under oneAPI" && exit 1)
       - run: mv /tmp/results D:/results
         shell: bash
       - uses: actions/upload-artifact@v4
