@@ -78,6 +78,10 @@ jobs:
             /tmp/results/bin
           cp tbb*.dll tbbmalloc*.dll /tmp/results/bin
           )
+          (
+          cd "C:/Program Files (x86)/Intel/oneAPI/ipp/latest/redist/intel64"
+          cp ipp*.dll /tmp/results/bin
+          )
       - run: mv /tmp/results D:/results
         shell: bash
       - uses: actions/upload-artifact@v4
