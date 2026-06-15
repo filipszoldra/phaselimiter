@@ -91,7 +91,9 @@ DEFINE_double(reference, -6.0, "reference level in db.");
 DEFINE_bool(disable_input_encode, false, "disable input encode before load wave.");
 DEFINE_string(input, "", "Input wave file path.");
 DEFINE_string(output, "", "Output wave file path.");
+DEFINE_string(output_after_automastering, "", "Path of output wave file just after AutoMastering (before pre-compression).");
 DEFINE_string(output_after_pre_compression, "", "Path of output wave file just after pre compression.");
+DEFINE_string(output_after_phase_limiter, "", "Path of output wave file just after phase limiting (before ceiling enforcement).");
 DEFINE_bool(pre_compression, true, "Pre-compression before limiting.");
 DEFINE_double(pre_compression_threshold, 6.0, "Pre-compression threshold relative to loudness.");
 DEFINE_double(pre_compression_mean_sec, 0.2, "Pre-compression mean sec.");
@@ -566,6 +568,17 @@ void MainFunc() {
         PrintMemoryUsage();
     }
 
+	// save just after automastering (diagnostic)
+	if (!FLAGS_output_after_automastering.empty()) {
+		phase_limiter::SaveFloatWave(wave, float_wav_filename);
+		boost::filesystem::remove(encoded_filename);
+		FFMpeg::Execute(FLAGS_ffmpeg, float_wav_filename, encoded_filename,
+			FFMpegOutputFormatOptions("wav", FLAGS_bit_depth, 2, 44100));
+		boost::filesystem::remove(FLAGS_output_after_automastering);
+		boost::filesystem::rename(encoded_filename, FLAGS_output_after_automastering);
+		std::cout << "output_after_automastering" << std::endl;
+	}
+
 	// 整える
 	phase_limiter::CutLowAndHighFreq(&wave, 2, FLAGS_low_cut_freq / 44100, FLAGS_high_cut_freq / 44100);
 	std::cerr << "CutLowAndHighFreq lap: " << stop_watch.time() << std::endl;
@@ -715,6 +728,17 @@ void MainFunc() {
 
 		std::cerr << "phase limiting lap: " << stop_watch.time() << std::endl;
         PrintMemoryUsage();
+	}
+
+	// save just after phase limiting, before ceiling enforcement (diagnostic)
+	if (!FLAGS_output_after_phase_limiter.empty()) {
+		phase_limiter::SaveFloatWave(wave, float_wav_filename);
+		boost::filesystem::remove(encoded_filename);
+		FFMpeg::Execute(FLAGS_ffmpeg, float_wav_filename, encoded_filename,
+			FFMpegOutputFormatOptions("wav", FLAGS_bit_depth, 2, 44100));
+		boost::filesystem::remove(FLAGS_output_after_phase_limiter);
+		boost::filesystem::rename(encoded_filename, FLAGS_output_after_phase_limiter);
+		std::cout << "output_after_phase_limiter" << std::endl;
 	}
 
     // post ceiling調整
