@@ -74,6 +74,16 @@ DEFINE_string(mastering5_eq_band_levels, "",
     "wet-gain upper bound (mid & side) for each band. <1 restrains, >1 permits more boost/width. "
     "Empty = disabled (no change). Count must equal band_count (9).");
 
+DEFINE_string(mastering5_eq_transform_levels, "",
+    "Comma-separated per-band multipliers (1=neutral) applied AFTER optimization to the realized "
+    "wet-gain (mid & side) of each band, as a half-delta strength r = 1 + 0.5*(level-1). "
+    "Deterministic per-band scaling of how hard AutoMastering5 transforms the band, independent of "
+    "the (soft) upper-bound in mastering5_eq_band_levels. Empty = disabled. Count must equal band_count (9).");
+
+DEFINE_bool(mastering5_eq_transform_symmetric, false,
+    "If true, mastering5_eq_transform_levels scales cuts (negative wet_gain) too; "
+    "if false (default), scales only boosts (positive wet_gain), so lowering a band never un-cuts it.");
+
 DEFINE_int32(worker_count, 0, "worker count (0: auto detect)");
 
 DEFINE_string(reference_mode, "loudness", "reference mode (loudness, youtube_loudness, rms, peak, zero)");

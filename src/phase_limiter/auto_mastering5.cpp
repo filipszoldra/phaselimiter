@@ -26,6 +26,8 @@ DECLARE_int32(mastering5_optimization_max_eval_count);
 DECLARE_double(mastering5_mastering_level);
 DECLARE_string(mastering5_mastering_reference_file);
 DECLARE_string(mastering5_eq_band_levels);
+DECLARE_string(mastering5_eq_transform_levels);
+DECLARE_bool(mastering5_eq_transform_symmetric);
 
 typedef float Float;
 using namespace bakuage;
@@ -347,18 +349,31 @@ namespace phase_limiter {
             lower_bounds *= scale;
             upper_bounds *= scale;
         }
-        if (!FLAGS_mastering5_eq_band_levels.empty()) {
+        // Parse a comma-separated list of per-band multipliers (shared by the ceiling
+        // upper-bound scaling here and the post-optimization transform scaling below).
+        const auto parse_band_csv = [](const std::string &csv) {
             std::vector<double> levels;
-            std::string s = FLAGS_mastering5_eq_band_levels;
+            std::string s = csv;
             for (size_t p; (p = s.find(',')) != std::string::npos; s.erase(0, p+1))
                 levels.push_back(std::stod(s.substr(0, p)));
             if (!s.empty()) levels.push_back(std::stod(s));
+            return levels;
+        };
+        // CEILING: scale the optimizer's wet-gain upper bound (soft, only binds when the
+        // optimizer pushes a band to its ceiling).
+        if (!FLAGS_mastering5_eq_band_levels.empty()) {
+            const std::vector<double> levels = parse_band_csv(FLAGS_mastering5_eq_band_levels);
             if ((int)levels.size() == band_count) {
                 for (int i = 0; i < band_count; i++) {
                     upper_bounds(8 * i + 1) *= levels[i];  // mid wet gain
                     upper_bounds(8 * i + 5) *= levels[i];  // side wet gain
                 }
             }
+        }
+        // TRANSFORM: per-band strength multipliers applied AFTER optimization (see find_params).
+        std::vector<double> transform_levels;
+        if (!FLAGS_mastering5_eq_transform_levels.empty()) {
+            transform_levels = parse_band_csv(FLAGS_mastering5_eq_transform_levels);
         }
 
         // エフェクトパラメータから評価関数を計算する
@@ -496,7 +511,22 @@ namespace phase_limiter {
         };
         
         const auto effect_params = find_params();
-        const Effect effect(original_mean, effect_params);
+        // TRANSFORM: deterministically scale the realized per-band wet_gain by a half-delta
+        // strength r = 1 + 0.5*(level-1). Boost-only by default (only positive wet_gain), so
+        // lowering a band never un-cuts it; mastering5_eq_transform_symmetric scales cuts too.
+        // wet_gain feeds both target_mean_ and dry_gain_ in LoudnessMapping, so it rides the
+        // existing per-band compressor (not a flat post-EQ).
+        auto scaled_params = effect_params;
+        if ((int)transform_levels.size() == band_count) {
+            for (int i = 0; i < band_count; i++) {
+                const double r = 1.0 + 0.5 * (transform_levels[i] - 1.0);
+                for (int idx : {8 * i + 1, 8 * i + 5}) {  // mid & side wet gain
+                    if (FLAGS_mastering5_eq_transform_symmetric || scaled_params(idx) > 0)
+                        scaled_params(idx) *= r;
+                }
+            }
+        }
+        const Effect effect(original_mean, scaled_params);
         
         std::mutex result_mtx;
         std::mutex progression_mtx;
