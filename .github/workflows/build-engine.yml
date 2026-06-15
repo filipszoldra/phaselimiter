@@ -55,7 +55,7 @@ jobs:
           CONDA_ROOT: C:/Miniconda/envs/test
           IPPROOT: C:/Program Files (x86)/Intel/oneAPI/ipp/latest
         run: |
-          $CMAKE_COMMAND -DCMAKE_BUILD_TYPE=Release -DSANDYBRIDGE_SUPPORT=ON -DDISABLE_TARGET_BENCH=ON -DDISABLE_TARGET_TEST=ON .
+          $CMAKE_COMMAND -DCMAKE_BUILD_TYPE=Release -DSANDYBRIDGE_SUPPORT=ON -DDISABLE_TARGET_BENCH=ON -DDISABLE_TARGET_TEST=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .
           ls -la
           bash -c "$MAKE_COMMAND"
       - name: collect binaries + runtime DLLs
