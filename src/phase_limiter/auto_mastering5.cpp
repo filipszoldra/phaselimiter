@@ -28,6 +28,7 @@ DECLARE_string(mastering5_mastering_reference_file);
 DECLARE_string(mastering5_eq_band_levels);
 DECLARE_string(mastering5_eq_transform_levels);
 DECLARE_bool(mastering5_eq_transform_symmetric);
+DECLARE_string(eq_analysis_target);
 
 typedef float Float;
 using namespace bakuage;
@@ -527,7 +528,49 @@ namespace phase_limiter {
             }
         }
         const Effect effect(original_mean, scaled_params);
-        
+
+        // ---------------------------------------------------------------------------
+        // Static per-band EQ correction after AutoMastering5 (--eq_analysis_target)
+        // Applied as linear gain per band before mixing, so pre-compression and limiter
+        // see the corrected spectrum. Formula per band i:
+        //   normalized_change[i] = (after_am[i] - input[i]) - mean(after_am - input)
+        //   remaining_gap[i]     = user_delta[i] - normalized_change[i]
+        //   correction_db[i]     = clamp(remaining_gap[i] * mastering_level, -6, +6)
+        // user_delta[i] is (user_target_db - input_loudness_db) sent by the GUI.
+        // ---------------------------------------------------------------------------
+        std::vector<float> eq_correction_gain(band_count, 1.0f);
+        if (!FLAGS_eq_analysis_target.empty()) {
+            const auto user_deltas = parse_band_csv(FLAGS_eq_analysis_target);
+            if ((int)user_deltas.size() == band_count) {
+                // Simulate per-band loudness after AutoMastering5 using the optimizer's solution.
+                Eigen::VectorXd after_am_mean;
+                Eigen::MatrixXd after_am_cov;
+                float after_am_mse;
+                calc_mean_cov(&effect, &after_am_mean, &after_am_cov, &after_am_mse);
+
+                // Mean loudness delta across bands (global gain shift; pre-compression/limiter handle this).
+                double mean_delta = 0;
+                for (int i = 0; i < band_count; i++) {
+                    mean_delta += after_am_mean[2 * i] - original_mean[2 * i];
+                }
+                mean_delta /= band_count;
+
+                for (int i = 0; i < band_count; i++) {
+                    const double normalized_change = (after_am_mean[2 * i] - original_mean[2 * i]) - mean_delta;
+                    const double remaining_gap     = user_deltas[i] - normalized_change;
+                    const double correction_db     = std::max(-6.0, std::min(6.0, remaining_gap * FLAGS_mastering5_mastering_level));
+                    eq_correction_gain[i] = static_cast<float>(std::pow(10.0, correction_db / 20.0));
+                    std::cerr << "eq_correction band " << i
+                              << "\tuser_delta=" << user_deltas[i]
+                              << "\tnorm_change=" << normalized_change
+                              << "\tcorr_db=" << correction_db << std::endl;
+                }
+            } else {
+                std::cerr << "eq_analysis_target: expected " << band_count
+                          << " values, got " << user_deltas.size() << " — skipping" << std::endl;
+            }
+        }
+
         std::mutex result_mtx;
         std::mutex progression_mtx;
         std::vector<std::function<void ()>> tasks;
@@ -548,7 +591,8 @@ namespace phase_limiter {
             const auto &band = calculator.bands()[band_index];
             const auto update_progression_bound = std::bind(update_progression, band_index, std::placeholders::_1);
             const auto &band_effect = effect.band_effects[band_index];
-            tasks.push_back([band, band_effect, sample_rate, frames, _wave, &result, &result_mtx, update_progression_bound, channels]() {
+            const float band_gain = eq_correction_gain[band_index];
+            tasks.push_back([band, band_effect, sample_rate, frames, _wave, &result, &result_mtx, update_progression_bound, channels, band_gain]() {
                 const float *wave_ptr = &(*_wave)[0];
                 
                 int fir_delay_samples;
@@ -606,7 +650,15 @@ namespace phase_limiter {
                     }
                 }
                 update_progression_bound(0.8);
-                
+
+                // Apply static EQ correction gain for this band before mixing.
+                if (band_gain != 1.0f) {
+                    const int len3 = frames * channels;
+                    const int cs = channels * shift;
+                    Float *ptr = filtered.data() + cs;
+                    for (int j = 0; j < len3; j++) ptr[j] *= band_gain;
+                }
+
                 // flush filtered (dry sound)
                 {
                     std::lock_guard<std::mutex> lock(result_mtx);

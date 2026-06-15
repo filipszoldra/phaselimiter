@@ -84,6 +84,12 @@ DEFINE_bool(mastering5_eq_transform_symmetric, false,
     "If true, mastering5_eq_transform_levels scales cuts (negative wet_gain) too; "
     "if false (default), scales only boosts (positive wet_gain), so lowering a band never un-cuts it.");
 
+DEFINE_string(eq_analysis_target, "",
+    "CSV of 9 per-band relative dB deltas (user_target_db - input_loudness_db per band); "
+    "enables a static EQ correction stage applied AFTER AutoMastering5 and BEFORE pre-compression. "
+    "Correction = clamp((user_delta[i] - normalized_spectral_change[i]) * mastering_level, -6, +6). "
+    "Empty = disabled (no correction). Count must equal band_count (9).");
+
 DEFINE_int32(worker_count, 0, "worker count (0: auto detect)");
 
 DEFINE_string(reference_mode, "loudness", "reference mode (loudness, youtube_loudness, rms, peak, zero)");
