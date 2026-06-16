@@ -29,6 +29,8 @@ DECLARE_string(mastering5_eq_band_levels);
 DECLARE_string(mastering5_eq_transform_levels);
 DECLARE_bool(mastering5_eq_transform_symmetric);
 DECLARE_string(eq_analysis_target);
+DECLARE_string(mastering5_section_ranges);
+DECLARE_double(mastering5_section_intensity);
 
 typedef float Float;
 using namespace bakuage;
@@ -571,6 +573,10 @@ namespace phase_limiter {
             }
         }
 
+        // Dry copy needed for per-section wet/dry blend (B2). Captured before
+        // parallel band processing so it reflects the pre-AutoMastering5 signal.
+        const std::vector<Float> dry = *_wave;
+
         std::mutex result_mtx;
         std::mutex progression_mtx;
         std::vector<std::function<void ()>> tasks;
@@ -673,8 +679,62 @@ namespace phase_limiter {
         tbb::parallel_for(0, (int)tasks.size(), [&tasks](int task_i) {
             tasks[task_i]();
         });
-        
+
         *_wave = std::move(result);
+
+        // Per-section wet/dry blend: blend AutoMastering5 result toward the dry
+        // (pre-processing) signal within the specified time ranges. Uses 100 ms
+        // raised-cosine ramps at section boundaries to prevent audible clicks.
+        if (!FLAGS_mastering5_section_ranges.empty()) {
+            const float section_intensity = static_cast<float>(FLAGS_mastering5_section_intensity);
+
+            // Parse "start:end,start:end,..." ranges
+            struct Range { float start_sec, end_sec; };
+            std::vector<Range> ranges;
+            {
+                std::string s = FLAGS_mastering5_section_ranges;
+                for (size_t p; !s.empty(); ) {
+                    p = s.find(',');
+                    std::string token = (p != std::string::npos) ? s.substr(0, p) : s;
+                    s = (p != std::string::npos) ? s.substr(p + 1) : "";
+                    size_t colon = token.find(':');
+                    if (colon != std::string::npos) {
+                        try {
+                            ranges.push_back({ std::stof(token.substr(0, colon)),
+                                               std::stof(token.substr(colon + 1)) });
+                        } catch (...) {}
+                    }
+                }
+            }
+
+            static const float pi = 3.14159265358979f;
+            const float ramp_sec = 0.1f; // 100 ms raised-cosine ramp
+
+            for (int fi = 0; fi < frames; fi++) {
+                const float t = static_cast<float>(fi) / sample_rate;
+                float w = 1.0f; // 1 = full AutoMastering5 result, section_intensity = gentle
+                for (const auto &r : ranges) {
+                    if (t < r.start_sec || t > r.end_sec) continue;
+                    const float dt_start = t - r.start_sec;
+                    const float dt_end   = r.end_sec - t;
+                    // ramp_blend(dt): at dt=0 -> 1.0 (full wet), at dt>=ramp -> section_intensity
+                    auto ramp_blend = [&](float dt) {
+                        float rv = 0.5f - 0.5f * std::cos(pi * std::min(dt, ramp_sec) / ramp_sec);
+                        return 1.0f - rv * (1.0f - section_intensity);
+                    };
+                    float bstart = (dt_start < ramp_sec) ? ramp_blend(dt_start) : section_intensity;
+                    float bend   = (dt_end   < ramp_sec) ? ramp_blend(dt_end)   : section_intensity;
+                    w = std::min(w, std::min(bstart, bend));
+                    break;
+                }
+                if (w < 1.0f) {
+                    for (int ch = 0; ch < channels; ch++) {
+                        const int k = channels * fi + ch;
+                        (*_wave)[k] = dry[k] + w * ((*_wave)[k] - dry[k]);
+                    }
+                }
+            }
+        }
     }
-    
+
 }

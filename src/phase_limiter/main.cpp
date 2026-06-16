@@ -90,6 +90,14 @@ DEFINE_string(eq_analysis_target, "",
     "Correction = clamp((user_delta[i] - normalized_spectral_change[i]) * mastering_level, -6, +6). "
     "Empty = disabled (no correction). Count must equal band_count (9).");
 
+DEFINE_string(mastering5_section_ranges, "",
+    "CSV of time ranges 'start:end' in seconds where AutoMastering5 is blended toward the dry "
+    "(unprocessed) signal by mastering5_section_intensity. Example: '0:21.5,106.5:124'. "
+    "Boundaries use a 100 ms raised-cosine ramp to avoid clicks. Empty = disabled.");
+DEFINE_double(mastering5_section_intensity, 1.0,
+    "Wet/dry blend strength inside mastering5_section_ranges (0 = fully dry/original, "
+    "1 = full AutoMastering5 result). Values around 0.2-0.4 gentle-ify quiet sections.");
+
 DEFINE_int32(worker_count, 0, "worker count (0: auto detect)");
 
 DEFINE_string(reference_mode, "loudness", "reference mode (loudness, youtube_loudness, rms, peak, zero)");
