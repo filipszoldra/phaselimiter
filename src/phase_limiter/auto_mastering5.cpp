@@ -708,7 +708,7 @@ namespace phase_limiter {
             }
 
             static const float pi = 3.14159265358979f;
-            const float ramp_sec = 0.1f; // 100 ms raised-cosine ramp
+            const float ramp_sec = 1.0f; // 1 s raised-cosine ramp (smooth enough to be inaudible)
 
             for (int fi = 0; fi < frames; fi++) {
                 const float t = static_cast<float>(fi) / sample_rate;
