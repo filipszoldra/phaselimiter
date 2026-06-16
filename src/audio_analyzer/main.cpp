@@ -13,6 +13,8 @@
 #include "picojson.h"
 
 #include "audio_analyzer/single_mode.h"
+#include "tbb/global_control.h"
+#include "tbb/info.h"
 
 DEFINE_bool(quick_exit, true, "Enable quick exit (this is not compatible with profiler. not output gmon.out)");
 
@@ -79,8 +81,9 @@ int main(int argc, char* argv[]) {
 		std::cerr << "Ipp initialized " << lib->Name << " " << lib->Version << std::endl;
 		PrintMemoryUsage();
 
-		tbb::task_scheduler_init tbb_init(FLAGS_worker_count ? FLAGS_worker_count : tbb::task_scheduler_init::default_num_threads());
-		std::cerr << "TBB default_num_threads:" << tbb::task_scheduler_init::default_num_threads() << std::endl;
+		const int tbb_threads = FLAGS_worker_count ? FLAGS_worker_count : (int)tbb::info::default_concurrency();
+		tbb::global_control tbb_ctrl(tbb::global_control::max_allowed_parallelism, tbb_threads);
+		std::cerr << "TBB default_num_threads:" << tbb_threads << std::endl;
 
 
 		if (FLAGS_mode == "default") {
