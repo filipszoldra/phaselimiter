@@ -9,7 +9,7 @@ on:
       - 'engine-*'
 env:
   CMAKE_COMMAND: 'cmake'
-  MAKE_COMMAND: 'cmake --build . --config Release --target phase_limiter'
+  MAKE_COMMAND: 'cmake --build . --config Release --target phase_limiter --target audio_analyzer'
 jobs:
   build:
     runs-on: windows-latest
@@ -64,6 +64,8 @@ jobs:
           CONDA_DLL_ROOT: C:/Miniconda/envs/test/Library/bin
         run: |
           cp -R bin/Release /tmp/results/bin
+          # audio_analyzer may be in a subdirectory
+          find bin/Release -name "audio_analyzer.exe" -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
           cp prebuilt/win64/libsndfile-1.2.2-win64/bin/sndfile.dll /tmp/results/bin
           (
           cd C:/Miniconda/envs/test/Library/bin
