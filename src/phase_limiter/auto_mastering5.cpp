@@ -717,14 +717,23 @@ namespace phase_limiter {
                     if (t < r.start_sec || t > r.end_sec) continue;
                     const float dt_start = t - r.start_sec;
                     const float dt_end   = r.end_sec - t;
-                    // ramp_blend(dt): at dt=0 -> 1.0 (full wet), at dt>=ramp -> section_intensity
+                    // ramp_blend(dt): at dt=0 -> 1.0 (full wet at boundary), at dt>=ramp -> section_intensity
                     auto ramp_blend = [&](float dt) {
                         float rv = 0.5f - 0.5f * std::cos(pi * std::min(dt, ramp_sec) / ramp_sec);
                         return 1.0f - rv * (1.0f - section_intensity);
                     };
-                    float bstart = (dt_start < ramp_sec) ? ramp_blend(dt_start) : section_intensity;
-                    float bend   = (dt_end   < ramp_sec) ? ramp_blend(dt_end)   : section_intensity;
-                    w = std::min(w, std::min(bstart, bend));
+                    float w_in_section;
+                    if (dt_start < ramp_sec && dt_end < ramp_sec) {
+                        // short section: both ramps overlap -- take shallower blend (higher w)
+                        w_in_section = std::max(ramp_blend(dt_start), ramp_blend(dt_end));
+                    } else if (dt_start < ramp_sec) {
+                        w_in_section = ramp_blend(dt_start);  // entry ramp: 1.0 -> section_intensity
+                    } else if (dt_end < ramp_sec) {
+                        w_in_section = ramp_blend(dt_end);    // exit ramp: section_intensity -> 1.0
+                    } else {
+                        w_in_section = section_intensity;
+                    }
+                    w = std::min(w, w_in_section);
                     break;
                 }
                 if (w < 1.0f) {
