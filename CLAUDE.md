@@ -13,8 +13,10 @@ The upstream source is `github.com/ai-mastering/phaselimiter` (inactive). This f
 
 ## Active branch
 
-`engine-oneapi-ipp` — contains all build fixes for modern toolchains (Intel oneAPI IPP 2026,
-oneTBB 2021+). This is the branch CI builds from. Do not touch `master` without a good reason.
+`engine-eq-transform` — current development branch: build fixes for modern toolchains (Intel
+oneAPI IPP 2026, oneTBB 2021+) **plus** all the fork's new flags (per-band EQ limits, static EQ
+correction, per-section wet/dry blend). This is the branch CI builds from and the one merged to
+`master` for releases. (Earlier work lived on `engine-oneapi-ipp` / `engine-eq-band-levels`.)
 
 ## Build environment
 
@@ -30,7 +32,8 @@ and the `build-engine` workflow fires automatically.
   - Lib names: `ippi.lib`, `ipps.lib`, `ippcore.lib`, `ippvm.lib` (NOT the old `ippimt.lib` etc.)
 - Installs **oneTBB 2021+** from conda-forge (`tbb-devel`, no version pin)
   - DLL ships as `tbb12.dll` / `tbbmalloc12.dll` (NOT `tbb.dll`)
-- Builds **only** `--target phase_limiter` (skips `audio_analyzer`, `audio_visualizer`, etc.)
+- Builds `--target phase_limiter --target audio_analyzer` (the GUI uses both: `audio_analyzer`
+  powers track analysis / suggest / before-after; skips `audio_visualizer`, etc.)
 - Uploads artifact `engine-bin` containing `bin/Release/` + all runtime DLLs
 
 ### Key dependencies and versions
@@ -62,53 +65,48 @@ All changes were made to support oneTBB 2021+ and Intel oneAPI IPP. No algorithm
 - Added `#include "tbb/global_control.h"` and `#include "tbb/info.h"`
 - `tbb::task_scheduler_init` → `tbb::global_control` + `tbb::info::default_concurrency()`
 
-## Planned changes (not yet committed)
+## Fork-added flags (implemented, on `engine-eq-transform`)
 
-### FAZA 1: `--mastering5_eq_band_levels` flag
+All defined in `src/phase_limiter/main.cpp` (`DEFINE_*`) and consumed in
+`src/phase_limiter/auto_mastering5.cpp`. Each is a no-op when empty / neutral, so zero regression
+risk vs upstream. The GUI sends them only when non-default (`../phaselimiter-gui/mastering.go`).
 
-Adds per-band multipliers on the AutoMastering5 optimizer's wet-gain upper bounds, allowing
-the GUI to restrain aggressive frequency boosts/stereo widening on sparse-highs tracks without
-switching out of quality mode (LOF model untouched, no mode switch, no model retraining).
+| Flag | Type | Effect |
+|---|---|---|
+| `--mastering5_eq_band_levels` | CSV[9] | Per-band multiplier (1=neutral) on the optimizer's **wet-gain upper bound** (mid `8*i+1` & side `8*i+5`). Soft penalty in the cost function → proportional, not a hard clip. <1 restrains boosts/width, >1 permits more. |
+| `--mastering5_eq_transform_levels` | CSV[9] | Per-band multiplier applied **after** optimization to the realized wet-gain, as half-delta `r = 1 + 0.5*(level-1)`. Deterministic per-band scaling, independent of the (soft) upper bound. |
+| `--mastering5_eq_transform_symmetric` | bool | If true, transform also scales cuts (negative wet_gain); default false = boosts only (lowering a band never un-cuts it). |
+| `--eq_analysis_target` | CSV[9] | Per-band relative dB deltas (`user_target - input`). Static EQ correction applied **after AutoMastering5, before pre-compression**: `gain_db = clamp((delta - normalized_spectral_change) * mastering_level, -6, +6)`. Scaled by intensity + clamped ±6 dB inside the engine. |
+| `--mastering5_section_ranges` | CSV `start:end` | Time ranges (seconds) where the AM5 result is blended toward the **dry** (pre-AM) signal. Single-pass, with a **1 s raised-cosine ramp** at boundaries. |
+| `--mastering5_section_intensity` | double | Wet/dry strength inside those ranges (0 = fully dry, 1 = full AM5). ~0.2–0.4 gentle-ifies quiet sections. |
 
-**`src/phase_limiter/main.cpp`** — after line 69 (`DEFINE_string mastering5_mastering_reference_file`):
-```cpp
-DEFINE_string(mastering5_eq_band_levels, "",
-    "Comma-separated per-band multipliers (>=0, 1=neutral) applied to optimizer "
-    "wet-gain upper bound (mid & side). <1 restrains, >1 permits more. Empty=no-op.");
-```
+The section blend captures `dry = *_wave` before band processing and, after reconstruction,
+applies `(*_wave)[k] = dry[k] + w*((*_wave)[k]-dry[k])` per frame, where `w` ramps 1→intensity→1
+across each range (raised-cosine, full-wet at boundaries → no click).
 
-**`src/phase_limiter/auto_mastering5.cpp`** — after `upper_bounds *= scale;` (~line 348):
-```cpp
-// Add DECLARE_string(mastering5_eq_band_levels); near top (after existing DECLARE_ block)
+> Note: the `--mastering5_section_ranges` help string in `main.cpp` still says "100 ms" — the
+> implemented ramp is **1 s** (`ramp_sec = 1.0f` in `auto_mastering5.cpp`). Cosmetic only.
 
-if (!FLAGS_mastering5_eq_band_levels.empty()) {
-    std::vector<double> levels;
-    std::string s = FLAGS_mastering5_eq_band_levels;
-    for (size_t p; (p = s.find(',')) != std::string::npos; s.erase(0, p+1))
-        levels.push_back(std::stod(s.substr(0, p)));
-    if (!s.empty()) levels.push_back(std::stod(s));
-    if ((int)levels.size() == band_count) {
-        for (int i = 0; i < band_count; i++) {
-            upper_bounds(8*i+1) *= levels[i];  // mid wet gain
-            upper_bounds(8*i+5) *= levels[i];  // side wet gain
-        }
-    }
-}
-```
-Empty flag or wrong band count → no-op → zero regression risk.
+**Do NOT** route the GUI's EQ correction through `--mastering5_mastering_reference_file`: that
+flag switches the engine into a distance/reference-file mode and breaks the control surface. The
+EQ correction is `--eq_analysis_target` only.
 
 ## Pipeline stages (quick reference)
 
 Source: `src/phase_limiter/main.cpp` `MainFunc()`.
 
 decode → band-cut → **AutoMastering5** (per-band M/S compressor via differential-evolution,
-`auto_mastering5.cpp`) → **pre-compression** (`pre_compression.cpp`) → gain-to-target-loudness →
-**phase limiter** (iterative FFT optimization, `GradCalculator.h`) → true-peak ceiling → encode
+`auto_mastering5.cpp`; the fork adds per-band EQ/transform limits, the static EQ correction, and
+the per-section wet/dry blend here) → **pre-compression** (`pre_compression.cpp`) →
+gain-to-target-loudness → **phase limiter** (iterative FFT optimization, `GradCalculator.h`) →
+true-peak ceiling → encode
 
 Key flags (all passable without recompile):
-- `--reference` — loudness target LUFS (default -9, very loud; -12/-14 = less crunch)
-- `--mastering5_mastering_level` — intensity 0–1
-- `--mastering5_eq_band_levels` — per-band multipliers (FAZA 1)
+- `--reference` — loudness target LUFS (engine default -6; the GUI sets -14; -12/-14 = less crunch)
+- `--mastering5_mastering_level` — intensity 0–1 (engine default 0.5; GUI default 0.4)
+- `--mastering5_eq_band_levels` / `--mastering5_eq_transform_levels` — per-band optimizer limits
+- `--eq_analysis_target` — static per-band EQ correction (scaled by intensity, clamped ±6 dB)
+- `--mastering5_section_ranges` / `--mastering5_section_intensity` — per-section wet/dry blend
 - `--pre_compression_threshold` / `--pre_compression_mean_sec`
 - `--ceiling` — true-peak ceiling (set ~-1.0 for headroom)
 
