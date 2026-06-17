@@ -176,7 +176,16 @@ else()
 
   set(BAKUAGE_PREBUILT_DIR ${PROJECT_SOURCE_DIR}/prebuilt/linux)
   set(BAKUAGE_LIB_DIR ${BAKUAGE_PREBUILT_DIR}/lib)
-  set(CONDA_PREFIX $ENV{CONDA_PREFIX})
+  # CONDA_PREFIX_CMAKE can be passed via -DCONDA_PREFIX_CMAKE=... on the cmake cmdline
+  # (more reliable than $ENV{CONDA_PREFIX} which may not be set at configure time).
+  if(DEFINED CONDA_PREFIX_CMAKE)
+    set(CONDA_PREFIX "${CONDA_PREFIX_CMAKE}")
+  elseif(DEFINED ENV{CONDA_PREFIX})
+    set(CONDA_PREFIX "$ENV{CONDA_PREFIX}")
+  else()
+    set(CONDA_PREFIX "")
+  endif()
+  message(STATUS "CONDA_PREFIX: ${CONDA_PREFIX}")
   set(BAKUAGE_LINK_LIBRARIES
      libsndfile.so
      libboost_system.a
