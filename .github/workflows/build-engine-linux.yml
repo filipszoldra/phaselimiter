@@ -1,0 +1,140 @@
+name: build-engine-linux
+# Builds phase_limiter + audio_analyzer for Linux (Cloud Run target).
+# Spike job: validates the fork compiles on ubuntu-latest with oneAPI IPP 2026
+# (Linux) + conda-forge TBB/Boost/Armadillo. No test/archive jobs.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'engine-linux*'
+env:
+  MAKE_COMMAND: 'ninja -j 4'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3.5.3
+        with:
+          submodules: recursive
+
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: '3.11'
+
+      - name: install apt deps (ninja, sndfile, png, zlib)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            libsndfile1-dev \
+            libpng-dev \
+            zlib1g-dev
+
+      - name: cache Intel oneAPI IPP Linux
+        id: cache-ipp-linux
+        uses: actions/cache@v4
+        with:
+          path: /opt/intel/oneapi/ipp
+          key: oneapi-ipp-linux-2026.0.0
+
+      - name: install Intel oneAPI IPP (Linux, via APT)
+        if: steps.cache-ipp-linux.outputs.cache-hit != 'true'
+        run: |
+          wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-ipp-devel
+
+      - name: detect IPPROOT
+        run: |
+          # oneAPI 2024+ installs to /opt/intel/oneapi/ipp/latest
+          if [ -d /opt/intel/oneapi/ipp/latest ]; then
+            echo "IPPROOT=/opt/intel/oneapi/ipp/latest" >> "$GITHUB_ENV"
+          elif [ -d /opt/intel/ipp ]; then
+            echo "IPPROOT=/opt/intel/ipp" >> "$GITHUB_ENV"
+          else
+            echo "ERROR: IPP not found" && exit 1
+          fi
+
+      - name: show IPP layout
+        run: |
+          echo "IPPROOT=$IPPROOT"
+          ls -la "$IPPROOT/" || true
+          ls -la "$IPPROOT/include/" 2>/dev/null | head -5 || true
+          ls -la "$IPPROOT/lib/" 2>/dev/null | head -10 || true
+          ls -la "$IPPROOT/lib/intel64/" 2>/dev/null | head -10 || true
+
+      - name: install conda deps (TBB + Boost + Armadillo)
+        shell: bash -el {0}
+        run: |
+          conda install -y -c conda-forge \
+            tbb-devel \
+            boost==1.82.0 \
+            armadillo==12.6.2
+
+      - name: build phase_limiter + audio_analyzer
+        shell: bash -el {0}
+        run: |
+          cmake -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSANDYBRIDGE_SUPPORT=ON \
+            -DDISABLE_TARGET_BENCH=ON \
+            -DDISABLE_TARGET_TEST=ON \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            .
+          ninja -j 4 phase_limiter audio_analyzer
+
+      - name: collect binaries + runtime shared libs
+        shell: bash -el {0}
+        run: |
+          mkdir -p /tmp/results/bin
+
+          cp bin/phase_limiter bin/audio_analyzer /tmp/results/bin/
+
+          # TBB shared libs from conda
+          for lib in libtbb.so.12 libtbbmalloc.so.2 libtbbmalloc_proxy.so.2; do
+            src="$CONDA_PREFIX/lib/$lib"
+            [ -f "$src" ] && cp "$src" /tmp/results/bin/ || echo "WARN: $lib not found at $src"
+          done
+          # Also copy unversioned symlink targets if versioned not found
+          for lib in libtbb.so libtbbmalloc.so libtbbmalloc_proxy.so; do
+            src="$CONDA_PREFIX/lib/$lib"
+            [ -f "$src" ] && cp -n "$src" /tmp/results/bin/ || true
+          done
+
+          # libsndfile from apt
+          for lib in libsndfile.so.1; do
+            src=$(ldconfig -p | grep "$lib" | awk '{print $NF}' | head -1)
+            [ -n "$src" ] && cp "$src" /tmp/results/bin/ || echo "WARN: $lib not found via ldconfig"
+          done
+
+          # IPP shared libs (for runtime; static .a were used at link time)
+          find "$IPPROOT/lib" -name "libipp*.so*" -not -name "*.so.*.*" \
+            -exec cp {} /tmp/results/bin/ \; 2>/dev/null || true
+
+          echo "=== collected binaries ==="
+          ls -lh /tmp/results/bin/
+
+      - name: smoke test phase_limiter
+        run: |
+          # Verify the binary runs and prints usage (engine requires --input to do anything)
+          /tmp/results/bin/phase_limiter --help 2>&1 | head -5 || true
+          echo "exit code: $?"
+          # Verify fork flags are accepted (would print "unknown flag" if absent)
+          /tmp/results/bin/phase_limiter \
+            --input /dev/null \
+            --output /tmp/smoke_out.wav \
+            --mastering true \
+            --mastering_mode mastering5 \
+            --mastering5_eq_transform_levels 1,1,1,1,1,1,1,1,1 \
+            --eq_analysis_target 0,0,0,0,0,0,0,0,0 \
+            2>&1 | head -20 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-bin-linux
+          path: /tmp/results

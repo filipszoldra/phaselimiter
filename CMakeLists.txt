@@ -172,19 +172,13 @@ else()
 
   set(BAKUAGE_PREBUILT_DIR ${PROJECT_SOURCE_DIR}/prebuilt/linux)
   set(BAKUAGE_LIB_DIR ${BAKUAGE_PREBUILT_DIR}/lib)
+  set(CONDA_PREFIX $ENV{CONDA_PREFIX})
   set(BAKUAGE_LINK_LIBRARIES
-   	 # libfftw3.a
-   	 # libfftw3f.a
-     # libgflags.a
      libsndfile.so
-     # libFLAC.a
-     # libvorbisenc.a
-     # libvorbis.a
-     # libogg.a
-   	 libboost_system.a
-   	 libboost_filesystem.a
-   	 libboost_serialization.a
-   	 libboost_math_tr1.a
+     libboost_system.a
+     libboost_filesystem.a
+     libboost_serialization.a
+     libboost_math_tr1.a
      libboost_iostreams.a
      libtbb.so # shared library is recommended officially
      libtbbmalloc.so
@@ -195,19 +189,20 @@ else()
      libippvm.a
      libpng.a
      libz.a
-     # liblapack.so # require for armadillo
-     # libblas.so # required for armadillo
-     # libarmadillo.so # only shared library available in apt
      pthread
      m
      dl
   )
+  # Support both old (/opt/intel/ipp) and oneAPI 2024+ layouts; IPPROOT overrides both.
   link_directories(
-    /opt/intel/ipp/lib/intel64
+    ${IPPROOT}/lib/intel64
+    ${IPPROOT}/lib
+    ${CONDA_PREFIX}/lib
   )
   include_directories(
-  	${BAKUAGE_PREBUILT_DIR}/include
-    /opt/intel/ipp/include
+    ${BAKUAGE_PREBUILT_DIR}/include
+    ${IPPROOT}/include
+    ${CONDA_PREFIX}/include
   )
   set(TINY_PROCESS_SOURCES
     #deps/tiny-process-library/process.hpp
