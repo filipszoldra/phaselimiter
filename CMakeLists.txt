@@ -186,22 +186,24 @@ else()
     set(CONDA_PREFIX "")
   endif()
   message(STATUS "CONDA_PREFIX: ${CONDA_PREFIX}")
+  # Use bare library names so CMake searches link_directories for .a or .so,
+  # whichever is available. conda-forge boost on Linux ships .so only (no .a).
   set(BAKUAGE_LINK_LIBRARIES
-     libsndfile.so
-     libboost_system.a
-     libboost_filesystem.a
-     libboost_serialization.a
-     libboost_math_tr1.a
-     libboost_iostreams.a
-     libtbb.so # shared library is recommended officially
-     libtbbmalloc.so
-     libtbbmalloc_proxy.so
-     libippi.a
-     libipps.a
-     libippcore.a
-     libippvm.a
-     libpng.a
-     libz.a
+     sndfile
+     boost_system
+     boost_filesystem
+     boost_serialization
+     boost_math_tr1
+     boost_iostreams
+     tbb          # shared recommended officially
+     tbbmalloc
+     tbbmalloc_proxy
+     ippi
+     ipps
+     ippcore
+     ippvm
+     png
+     z
      pthread
      m
      dl

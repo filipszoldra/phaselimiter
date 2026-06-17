@@ -83,7 +83,8 @@ jobs:
           echo "IPPROOT=$IPPROOT"
           ls "$CONDA_PREFIX/lib/libboost_system"* 2>/dev/null || echo "WARN: no boost_system in $CONDA_PREFIX/lib"
           ls "$CONDA_PREFIX/lib/libtbb"* 2>/dev/null | head -5 || echo "WARN: no tbb in $CONDA_PREFIX/lib"
-          ls "$IPPROOT/lib/"*.a 2>/dev/null | head -5 || ls "$IPPROOT/lib/intel64/"*.a 2>/dev/null | head -5 || echo "WARN: no IPP static libs found"
+          echo "=== IPP .a files ===" && ls "$IPPROOT/lib/"*.a 2>/dev/null || ls "$IPPROOT/lib/intel64/"*.a 2>/dev/null || echo "WARN: no IPP static libs found"
+          echo "=== boost .a files ===" && ls "$CONDA_PREFIX/lib/libboost"*.a 2>/dev/null || echo "INFO: no static boost .a in conda (only .so expected)"
 
       - name: build phase_limiter + audio_analyzer
         shell: bash -el {0}
