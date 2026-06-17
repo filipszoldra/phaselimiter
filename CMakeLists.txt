@@ -160,10 +160,11 @@ else()
   # -fopt-info-vec-optimized-missed
   # auto vectorizeはそれほど速くならない。(理由: auto vectorizeできるようなところはそもそも単純で遅くない？)
   # 出力が冗長になるのでオフにした
-  # c++14: Boost 1.82 requires it (emits #warning under c++11 which -Werror would catch).
   # -Wno-nonnull: GCC 13 false positive on memset in dft.cpp FftMemoryBuffer.
-  # No -Werror: legacy code; newer GCC versions surface many new warnings we don't own.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -frecord-gcc-switches -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable -Wno-nonnull")
+  # No -Werror: legacy code; newer GCC versions surface new warnings we don't own.
+  #   (Boost 1.82 #warning about c++14 is suppressed this way — it runs fine under c++11.)
+  # Stay on c++11: c++14 breaks NULL resolution in bakuage/loudness_ebu_r128.h (transitive include).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -frecord-gcc-switches -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable -Wno-nonnull")
   if(SANDYBRIDGE_SUPPORT)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=sandybridge -mtune=sandybridge -mavx")
   else()
