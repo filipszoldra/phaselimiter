@@ -162,9 +162,9 @@ else()
   # 出力が冗長になるのでオフにした
   # -Wno-nonnull: GCC 13 false positive on memset in dft.cpp FftMemoryBuffer.
   # No -Werror: legacy code; newer GCC versions surface new warnings we don't own.
-  #   (Boost 1.82 #warning about c++14 is suppressed this way — it runs fine under c++11.)
-  # Stay on c++11: c++14 breaks NULL resolution in bakuage/loudness_ebu_r128.h (transitive include).
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -frecord-gcc-switches -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable -Wno-nonnull")
+  # -include cstddef: force-include on every TU so GCC 13 sees NULL/size_t even when
+  #   bakuage/loudness_ebu_r128.h only includes <vector> (transitive include regression).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -frecord-gcc-switches -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable -Wno-nonnull -include cstddef")
   if(SANDYBRIDGE_SUPPORT)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=sandybridge -mtune=sandybridge -mavx")
   else()
